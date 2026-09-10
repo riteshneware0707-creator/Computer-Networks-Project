@@ -4,57 +4,28 @@ import {
   NetworkLink,
   NetworkNode,
   NodeId,
-  PacketTrace,
   SimulationState,
-  TimeSeriesMetric,
 } from './types';
 import { INITIAL_LINKS, INITIAL_NODES, INITIAL_WEIGHTS } from './services/networkData';
-import {
-  calculateCongestionScore,
-  computeDynamicLinkCost,
-  generateSimulatedPacket,
-} from './services/simulationCalculations';
-import { computeShortestPathDijkstra } from './services/dijkstra';
+import { calculateCongestionScore } from './services/simulationCalculations';
 import { NetworkTopologyView } from './components/NetworkTopologyView';
 import { MetricsDashboard } from './components/MetricsDashboard';
-import { ControlDeck } from './components/ControlDeck';
-import { ComparativeBenchmarks } from './components/ComparativeBenchmarks';
-import { WiresharkInspector } from './components/WiresharkInspector';
-import { AlgorithmVisualizer } from './components/AlgorithmVisualizer';
-import { CodeArtifactsViewer } from './components/CodeArtifactsViewer';
 import {
-  ShieldAlert,
-  Radio,
-  Cpu,
-  Terminal,
-  Activity,
-  BarChart2,
-  FileCode2,
-  Layers,
-  Sparkles,
-  Info,
+  Network,
+  Play,
+  Pause,
+  RotateCcw,
   CheckCircle2,
-  X,
-  ExternalLink,
-  Copy,
-  Check,
+  Flame,
+  AlertOctagon,
+  Zap,
 } from 'lucide-react';
 
 export default function App() {
-  // Navigation tabs
-  const [activeTab, setActiveTab] = useState<'topology' | 'benchmarks' | 'wireshark' | 'dijkstra' | 'artifacts'>('topology');
-  const [showVercelModal, setShowVercelModal] = useState(false);
-
-  // Simulation Data States
   const [nodes, setNodes] = useState<NetworkNode[]>(INITIAL_NODES);
   const [links, setLinks] = useState<NetworkLink[]>(INITIAL_LINKS);
-  const [weights, setWeights] = useState<CongestionWeights>(INITIAL_WEIGHTS);
-  const [selectedNodeId, setSelectedNodeId] = useState<NodeId | null>(2); // Default inspect R2
-  const [packets, setPackets] = useState<PacketTrace[]>([]);
-  const [timeSeriesData, setTimeSeriesData] = useState<TimeSeriesMetric[]>([]);
-  const [dijkstraLogs, setDijkstraLogs] = useState<string[]>([]);
+  const [weights] = useState<CongestionWeights>(INITIAL_WEIGHTS);
 
-  // Core Simulation State
   const [simState, setSimState] = useState<SimulationState>({
     simTimeSeconds: 1.0,
     isRunning: true,
@@ -68,7 +39,7 @@ export default function App() {
     currentCongestionScore: 9,
     systemHealthScore: 98,
     overallLossPct: 0,
-    overallLatencyMs: 30.0,
+    overallLatencyMs: 30.1,
     overallThroughputMbps: 2.0,
     overallJitterMs: 1.2,
     lastFailureTime: null,
@@ -78,35 +49,21 @@ export default function App() {
     manualR2Congestion: false,
     manualR2Failure: false,
     manualR3Failure: false,
-    logEvents: [
-      {
-        id: 'init-1',
-        timestamp: '14:00:00.000',
-        type: 'info',
-        message: 'System booted: NS-3 Point-to-Point Virtual Topology configured with 6 subnets.',
-      },
-      {
-        id: 'init-2',
-        timestamp: '14:00:00.500',
-        type: 'success',
-        message: 'Baseline converged on Route A (PC -> R1 -> R2 -> R4 -> Server), Delay: 30ms.',
-      },
-    ],
+    logEvents: [],
   });
 
   const packetSeqRef = useRef<number>(100);
 
-  // Active path node IDs helper
   const getActivePathNodeIds = useCallback((): NodeId[] => {
     if (simState.activeRoute.includes('Route A')) {
       return [0, 1, 2, 4, 5];
     } else if (simState.activeRoute.includes('Route B')) {
       return [0, 1, 3, 4, 5];
     }
-    return [0, 1]; // Disconnected
+    return [0, 1];
   }, [simState.activeRoute]);
 
-  // Main Simulation Step Tick
+  // Main Simulation Loop
   useEffect(() => {
     if (!simState.isRunning) return;
 
@@ -114,13 +71,10 @@ export default function App() {
       setSimState((prev) => {
         const nextTime = Math.round((prev.simTimeSeconds + 0.5) * 10) / 10;
         packetSeqRef.current += 1;
-        const currentSeq = packetSeqRef.current;
 
-        // Determine R2 condition
         const isR2Failed = prev.manualR2Failure;
-        const isR2Congested = prev.manualR2Congestion || (prev.generatedTrafficMbps > 10 && prev.activeRoute.includes('Route A'));
+        const isR2Congested = prev.manualR2Congestion;
 
-        // Calculate R2 Metrics
         let r2Loss = 0;
         let r2Delay = 10;
         let r2Queue = 4;
@@ -132,15 +86,10 @@ export default function App() {
           r2Queue = 0;
           r2BwUtil = 0;
         } else if (isR2Congested) {
-          r2Queue = 46; // Close to maxQueue 50
-          r2Loss = 32.5; // Dropping packets
-          r2Delay = 82; // High queue buffer delay
+          r2Queue = 46;
+          r2Loss = 32.5;
+          r2Delay = 82;
           r2BwUtil = 98;
-        } else if (prev.generatedTrafficMbps === 6) {
-          r2Queue = 24;
-          r2Loss = 0.5;
-          r2Delay = 35;
-          r2BwUtil = 60;
         }
 
         const r2ScoreResult = calculateCongestionScore(
@@ -155,7 +104,7 @@ export default function App() {
 
         const r2Score = isR2Failed ? 100 : r2ScoreResult.score;
 
-        // Update Nodes State
+        // Update Nodes
         setNodes((currentNodes) =>
           currentNodes.map((node) => {
             if (node.id === 2) {
@@ -179,7 +128,7 @@ export default function App() {
                 queueUtilization: isRouteBActive ? 12 : 2,
                 lossRate: 0,
                 currentDelayMs: 20,
-                bandwidthUtilization: isRouteBActive ? Math.round((prev.generatedTrafficMbps / 10) * 100) : 5,
+                bandwidthUtilization: isRouteBActive ? 80 : 5,
                 congestionScore: isRouteBActive ? 16 : 4,
               };
             }
@@ -187,156 +136,50 @@ export default function App() {
           })
         );
 
-        // Update Dynamic Links
+        // Update Links
         setLinks((currentLinks) =>
           currentLinks.map((link) => {
             if (link.id === 'R1-R2' || link.id === 'R2-R4') {
               if (isR2Failed) {
                 return { ...link, dynamicCost: Infinity, status: 'down' };
               }
-              const penalty = r2Score > 30 ? (r2Score - 30) * 1.5 : 0;
               return {
                 ...link,
-                dynamicCost: Math.round((link.baseDelayMs + penalty) * 10) / 10,
-                status: r2Score > 60 ? 'congested' : r2Score > 30 ? 'warning' : 'active',
-                currentLoadMbps: prev.activeRoute.includes('Route A') ? prev.generatedTrafficMbps : 0.1,
-              };
-            }
-            if (link.id === 'R1-R3' || link.id === 'R3-R4') {
-              return {
-                ...link,
-                currentLoadMbps: prev.activeRoute.includes('Route B') ? prev.generatedTrafficMbps : 0.1,
+                dynamicCost: r2Score > 60 ? 60 : 10,
+                status: r2Score > 60 ? 'congested' : 'active',
               };
             }
             return link;
           })
         );
 
-        // Route Selection Logic
+        // Dynamic Route Selection
         let nextRoute: 'Route A (R1-R2-R4)' | 'Route B (R1-R3-R4)' | 'Disconnected' = prev.activeRoute;
         let switches = prev.routeSwitchesCount;
         let recoveryTime = prev.lastRecoveryTimeMs;
 
-        if (prev.routingMode === 'conventional') {
-          // Conventional Static Routing stays on Route A regardless
-          nextRoute = isR2Failed ? 'Disconnected' : 'Route A (R1-R2-R4)';
-        } else {
-          // Proposed Adaptive Routing with Hysteresis
-          if (isR2Failed) {
-            // Instant Failover to Route B
-            if (!prev.activeRoute.includes('Route B')) {
-              nextRoute = 'Route B (R1-R3-R4)';
-              switches += 1;
-              recoveryTime = 1200; // 1.2 seconds measured convergence
-            }
-          } else if (prev.activeRoute.includes('Route A')) {
-            // Check upper threshold (> 70)
-            if (r2Score > prev.hysteresisThresholdUp) {
-              nextRoute = 'Route B (R1-R3-R4)';
-              switches += 1;
-            }
-          } else if (prev.activeRoute.includes('Route B')) {
-            // Check return threshold (< 40)
-            if (prev.hysteresisEnabled) {
-              if (r2Score < prev.hysteresisThresholdDown) {
-                nextRoute = 'Route A (R1-R2-R4)';
-                switches += 1;
-              }
-            } else {
-              // Without hysteresis: flaps if score drops below 60
-              if (r2Score < 60) {
-                nextRoute = 'Route A (R1-R2-R4)';
-                switches += 1;
-              }
-            }
+        if (isR2Failed) {
+          if (!prev.activeRoute.includes('Route B')) {
+            nextRoute = 'Route B (R1-R3-R4)';
+            switches += 1;
+            recoveryTime = 1200; // 1.20s
+          }
+        } else if (r2Score > 70) {
+          if (!prev.activeRoute.includes('Route B')) {
+            nextRoute = 'Route B (R1-R3-R4)';
+            switches += 1;
+          }
+        } else if (r2Score < 40) {
+          if (prev.activeRoute.includes('Route B')) {
+            nextRoute = 'Route A (R1-R2-R4)';
+            switches += 1;
           }
         }
 
-        // Overall Performance Metrics
-        let currentLatency = 30.0;
-        let currentLoss = 0.0;
-        let currentThroughput = prev.generatedTrafficMbps;
-
-        if (prev.routingMode === 'conventional') {
-          if (isR2Failed) {
-            currentLoss = 100.0;
-            currentThroughput = 0.0;
-            currentLatency = 0.0;
-          } else if (isR2Congested) {
-            currentLatency = 112.4;
-            currentLoss = 38.5;
-            currentThroughput = Math.min(prev.generatedTrafficMbps, 7.2);
-          } else {
-            currentLatency = 30.2;
-            currentLoss = 0.0;
-            currentThroughput = prev.generatedTrafficMbps;
-          }
-        } else {
-          // Proposed
-          if (nextRoute.includes('Route B')) {
-            currentLatency = 50.8 + (Math.random() * 2 - 1);
-            currentLoss = 0.0;
-            currentThroughput = Math.min(prev.generatedTrafficMbps, 9.8);
-          } else if (isR2Failed) {
-            currentLoss = 100.0;
-            currentThroughput = 0.0;
-          } else {
-            currentLatency = 30.1 + (Math.random() * 1.5 - 0.75);
-            currentLoss = 0.0;
-            currentThroughput = prev.generatedTrafficMbps;
-          }
-        }
-
-        // Health Score (0 - 100)
-        const health = Math.round(
-          Math.max(
-            0,
-            100 -
-              currentLoss * 0.8 -
-              (currentLatency > 40 ? (currentLatency - 40) * 0.5 : 0) -
-              (isR2Failed ? 15 : 0)
-          )
-        );
-
-        // Generate packet
-        const newPacket = generateSimulatedPacket(
-          currentSeq,
-          nextTime,
-          nextRoute,
-          isR2Congested,
-          isR2Failed,
-          prev.routingMode === 'conventional'
-        );
-
-        setPackets((oldPackets) => [newPacket, ...oldPackets.slice(0, 75)]);
-
-        // Push TimeSeries Chart Data
-        const timeLabel = `T+${nextTime.toFixed(1)}s`;
-        setTimeSeriesData((oldData) => {
-          const newPoint: TimeSeriesMetric = {
-            time: timeLabel,
-            rawTime: nextTime,
-            latencyProposed: nextRoute.includes('Route B') ? 51.2 : 30.1,
-            latencyConventional: isR2Failed ? 0 : isR2Congested ? 112.4 : 30.2,
-            lossProposed: nextRoute.includes('Route B') ? 0 : isR2Failed ? 100 : isR2Congested ? 25 : 0,
-            lossConventional: isR2Failed ? 100 : isR2Congested ? 38.5 : 0,
-            throughputProposed: currentThroughput,
-            throughputConventional: prev.routingMode === 'conventional' ? currentThroughput : (isR2Failed ? 0 : 7.2),
-            congestionScoreR2: r2Score,
-            congestionScoreR3: nextRoute.includes('Route B') ? 16 : 4,
-          };
-          return [...oldData.slice(-35), newPoint];
-        });
-
-        // Run Dijkstra to update step logs
-        const dResult = computeShortestPathDijkstra(
-          nodes,
-          links,
-          0,
-          5,
-          prev.routingMode === 'conventional'
-        );
-        setDijkstraLogs(dResult.stepLogs);
+        const isRouteB = nextRoute.includes('Route B');
+        const currentLatency = isRouteB ? 50.8 : 30.1;
+        const currentLoss = 0.0;
+        const currentThroughput = isRouteB ? 9.8 : prev.generatedTrafficMbps;
 
         return {
           ...prev,
@@ -345,11 +188,9 @@ export default function App() {
           previousRoute: prev.activeRoute,
           routeSwitchesCount: switches,
           currentCongestionScore: r2Score,
-          systemHealthScore: health,
           overallLatencyMs: currentLatency,
           overallLossPct: currentLoss,
           overallThroughputMbps: currentThroughput,
-          overallJitterMs: Math.round((Math.random() * 2.2 + 0.4) * 10) / 10,
           lastRecoveryTimeMs: recoveryTime,
         };
       });
@@ -358,367 +199,202 @@ export default function App() {
     return () => clearInterval(interval);
   }, [simState.isRunning, weights]);
 
-  // Scenario Handlers (PART 20 & 21)
-  const handleApplyScenario = (type: 'normal' | 'moderate' | 'congested' | 'fail_r2' | 'flapping_test' | 'reset') => {
-    setSimState((prev) => {
-      if (type === 'normal') {
-        return {
-          ...prev,
-          generatedTrafficMbps: 2.0,
-          manualR2Congestion: false,
-          manualR2Failure: false,
-          activeRoute: 'Route A (R1-R2-R4)',
-        };
-      }
-      if (type === 'moderate') {
-        return {
-          ...prev,
-          generatedTrafficMbps: 6.0,
-          manualR2Congestion: false,
-          manualR2Failure: false,
-        };
-      }
-      if (type === 'congested') {
-        return {
-          ...prev,
-          generatedTrafficMbps: 12.0,
-          manualR2Congestion: true,
-          manualR2Failure: false,
-        };
-      }
-      if (type === 'fail_r2') {
-        return {
-          ...prev,
-          manualR2Failure: true,
-          manualR2Congestion: false,
-          lastFailureTime: prev.simTimeSeconds,
-        };
-      }
-      if (type === 'flapping_test') {
-        return {
-          ...prev,
-          hysteresisEnabled: !prev.hysteresisEnabled,
-          generatedTrafficMbps: 8.5,
-          manualR2Congestion: false,
-          manualR2Failure: false,
-        };
-      }
-      if (type === 'reset') {
-        return {
-          ...prev,
-          generatedTrafficMbps: 2.0,
-          manualR2Congestion: false,
-          manualR2Failure: false,
-          activeRoute: 'Route A (R1-R2-R4)',
-          routeSwitchesCount: 0,
-        };
-      }
-      return prev;
-    });
+  // Demo Handlers (PART 20)
+  const handleNormal = () => {
+    setSimState((p) => ({
+      ...p,
+      generatedTrafficMbps: 2.0,
+      manualR2Congestion: false,
+      manualR2Failure: false,
+      activeRoute: 'Route A (R1-R2-R4)',
+    }));
   };
 
-  const handleToggleNodeFail = (nodeId: NodeId) => {
+  const handleCreateCongestion = () => {
+    setSimState((p) => ({
+      ...p,
+      generatedTrafficMbps: 12.0,
+      manualR2Congestion: true,
+      manualR2Failure: false,
+    }));
+  };
+
+  const handleFailR2 = () => {
+    setSimState((p) => ({
+      ...p,
+      manualR2Failure: true,
+      manualR2Congestion: false,
+      lastFailureTime: p.simTimeSeconds,
+    }));
+  };
+
+  const handleReset = () => {
+    setSimState((p) => ({
+      ...p,
+      generatedTrafficMbps: 2.0,
+      manualR2Congestion: false,
+      manualR2Failure: false,
+      activeRoute: 'Route A (R1-R2-R4)',
+      routeSwitchesCount: 0,
+    }));
+  };
+
+  const toggleNodeFail = (nodeId: NodeId) => {
     if (nodeId === 2) {
-      setSimState((prev) => ({
-        ...prev,
-        manualR2Failure: !prev.manualR2Failure,
-        lastFailureTime: !prev.manualR2Failure ? prev.simTimeSeconds : prev.lastFailureTime,
-      }));
+      setSimState((p) => ({ ...p, manualR2Failure: !p.manualR2Failure }));
     }
   };
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col selection:bg-sky-500 selection:text-white">
-      {/* Top Navigation Bar */}
-      <header className="sticky top-0 z-30 bg-slate-950/90 border-b border-slate-800 backdrop-blur-md px-4 lg:px-8 py-3">
-        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-gradient-to-tr from-sky-600 to-indigo-600 shadow-md shadow-sky-500/20 text-white">
-              <ShieldAlert className="w-5 h-5" />
+      {/* Header */}
+      <header className="bg-slate-900/90 border-b border-slate-800 px-4 lg:px-8 py-3.5">
+        <div className="max-w-5xl mx-auto flex items-center justify-between gap-4">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-lg bg-sky-500/10 text-sky-400 border border-sky-500/20">
+              <Network className="w-5 h-5" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-base sm:text-lg font-black tracking-tight text-white">
-                  Self-Healing Adaptive Network
-                </h1>
-                <span className="hidden sm:inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
-                  NS-3 Virtual Laboratory + Python Intelligence
-                </span>
-              </div>
+              <h1 className="text-base font-bold text-white">Self-Healing Adaptive Network</h1>
               <p className="text-xs text-slate-400">
-                Design and Implementation of an Adaptive Routing Mechanism for Dynamic Networks
+                Design and Implementation of a Self-Healing Adaptive Routing Mechanism
               </p>
             </div>
           </div>
 
-          {/* Nav Tabs */}
-          <nav className="flex items-center gap-1.5 p-1 rounded-xl bg-slate-900 border border-slate-800 text-xs">
+          <div className="flex items-center gap-2">
             <button
-              onClick={() => setActiveTab('topology')}
-              className={`px-3 py-1.5 rounded-lg font-medium transition-all flex items-center gap-1.5 ${
-                activeTab === 'topology'
-                  ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40 shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
+              onClick={() => setSimState((p) => ({ ...p, isRunning: !p.isRunning }))}
+              className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-all flex items-center gap-1.5"
             >
-              <Activity className="w-3.5 h-3.5" />
-              Live Topology & Controls
+              {simState.isRunning ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+              {simState.isRunning ? 'Pause' : 'Resume'}
             </button>
-
             <button
-              onClick={() => setActiveTab('benchmarks')}
-              className={`px-3 py-1.5 rounded-lg font-medium transition-all flex items-center gap-1.5 ${
-                activeTab === 'benchmarks'
-                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
+              onClick={handleReset}
+              className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-all flex items-center gap-1.5"
             >
-              <BarChart2 className="w-3.5 h-3.5" />
-              Benchmarks & Graphs
+              <RotateCcw className="w-3.5 h-3.5" />
+              Reset
             </button>
-
-            <button
-              onClick={() => setActiveTab('wireshark')}
-              className={`px-3 py-1.5 rounded-lg font-medium transition-all flex items-center gap-1.5 ${
-                activeTab === 'wireshark'
-                  ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40 shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <Terminal className="w-3.5 h-3.5" />
-              Wireshark Inspector
-            </button>
-
-            <button
-              onClick={() => setActiveTab('dijkstra')}
-              className={`px-3 py-1.5 rounded-lg font-medium transition-all flex items-center gap-1.5 ${
-                activeTab === 'dijkstra'
-                  ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <Cpu className="w-3.5 h-3.5" />
-              Dijkstra & Scoring
-            </button>
-
-            <button
-              onClick={() => setActiveTab('artifacts')}
-              className={`px-3 py-1.5 rounded-lg font-medium transition-all flex items-center gap-1.5 ${
-                activeTab === 'artifacts'
-                  ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <FileCode2 className="w-3.5 h-3.5" />
-              NS-3 C++ & Viva Suite
-            </button>
-
-            <button
-              onClick={() => setShowVercelModal(true)}
-              className="ml-1 px-3 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-md shadow-emerald-900/30 text-xs"
-            >
-              <span className="w-2 h-2 rounded-full bg-emerald-300 animate-pulse"></span>
-              Deploy to Vercel
-            </button>
-          </nav>
+          </div>
         </div>
       </header>
 
-      {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto p-4 lg:p-8 space-y-6">
-        {/* KPI Metrics Dashboard Always Visible at the Top */}
-        <MetricsDashboard state={simState} nodes={nodes} />
+      {/* Main Content */}
+      <main className="flex-1 max-w-5xl w-full mx-auto p-4 sm:p-6 space-y-4">
+        {/* The 4 Core Demo Buttons (PART 20) */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+          <button
+            onClick={handleNormal}
+            className={`p-3 rounded-xl border text-left transition-all ${
+              !simState.manualR2Congestion && !simState.manualR2Failure
+                ? 'bg-emerald-950/60 border-emerald-500 text-emerald-200'
+                : 'bg-slate-900 border-slate-800 text-slate-300 hover:border-slate-700'
+            }`}
+          >
+            <div className="text-xs font-bold flex items-center gap-1.5">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+              Normal Network
+            </div>
+            <div className="text-[11px] text-slate-400 mt-0.5">Route A (30ms), healthy</div>
+          </button>
 
-        {/* Tab 1: Live Interactive Topology & Control Deck */}
-        {activeTab === 'topology' && (
-          <div className="space-y-6">
-            <NetworkTopologyView
-              nodes={nodes}
-              links={links}
-              activeRoute={simState.activeRoute}
-              activePathNodeIds={getActivePathNodeIds()}
-              isSimulating={simState.isRunning}
-              onToggleNodeFail={handleToggleNodeFail}
-              onSelectNode={(n) => setSelectedNodeId(n.id)}
-              selectedNodeId={selectedNodeId}
-            />
+          <button
+            onClick={handleCreateCongestion}
+            className={`p-3 rounded-xl border text-left transition-all ${
+              simState.manualR2Congestion
+                ? 'bg-rose-950/60 border-rose-500 text-rose-200 animate-pulse'
+                : 'bg-slate-900 border-slate-800 text-slate-300 hover:border-slate-700'
+            }`}
+          >
+            <div className="text-xs font-bold flex items-center gap-1.5">
+              <Flame className="w-3.5 h-3.5 text-rose-400" />
+              Create Congestion
+            </div>
+            <div className="text-[11px] text-slate-400 mt-0.5">Overload R2 ➔ Switch to Route B</div>
+          </button>
 
-            <ControlDeck
-              state={simState}
-              onApplyScenario={handleApplyScenario}
-              onUpdateTrafficRate={(rate) =>
-                setSimState((p) => ({ ...p, generatedTrafficMbps: rate }))
-              }
-              onToggleRoutingMode={() =>
-                setSimState((p) => ({
-                  ...p,
-                  routingMode: p.routingMode === 'adaptive' ? 'conventional' : 'adaptive',
-                }))
-              }
-              onToggleHysteresis={() =>
-                setSimState((p) => ({ ...p, hysteresisEnabled: !p.hysteresisEnabled }))
-              }
-              onToggleSimulation={() =>
-                setSimState((p) => ({ ...p, isRunning: !p.isRunning }))
-              }
-            />
-          </div>
-        )}
+          <button
+            onClick={handleFailR2}
+            className={`p-3 rounded-xl border text-left transition-all ${
+              simState.manualR2Failure
+                ? 'bg-red-950/70 border-red-500 text-red-200'
+                : 'bg-slate-900 border-slate-800 text-slate-300 hover:border-slate-700'
+            }`}
+          >
+            <div className="text-xs font-bold flex items-center gap-1.5">
+              <AlertOctagon className="w-3.5 h-3.5 text-red-400" />
+              Fail R2
+            </div>
+            <div className="text-[11px] text-slate-400 mt-0.5">Crash node ➔ 1.2s Failover</div>
+          </button>
 
-        {/* Tab 2: Comparative Benchmarks & Graphs */}
-        {activeTab === 'benchmarks' && (
-          <ComparativeBenchmarks timeSeriesData={timeSeriesData} />
-        )}
+          <button
+            onClick={handleReset}
+            className="p-3 rounded-xl border border-slate-800 bg-slate-900 text-slate-300 hover:border-slate-700 text-left transition-all"
+          >
+            <div className="text-xs font-bold flex items-center gap-1.5">
+              <RotateCcw className="w-3.5 h-3.5 text-slate-400" />
+              Reset Network
+            </div>
+            <div className="text-[11px] text-slate-400 mt-0.5">Restore initial conditions</div>
+          </button>
+        </div>
 
-        {/* Tab 3: Wireshark Packet-Level Inspector */}
-        {activeTab === 'wireshark' && (
-          <WiresharkInspector
-            packets={packets}
-            activeRoute={simState.activeRoute}
-          />
-        )}
-
-        {/* Tab 4: Dijkstra & Congestion Formula Visualizer */}
-        {activeTab === 'dijkstra' && (
-          <AlgorithmVisualizer
-            nodes={nodes}
-            links={links}
-            weights={weights}
-            onUpdateWeights={setWeights}
-            activeRoute={simState.activeRoute}
-            dijkstraLogs={dijkstraLogs}
-            hysteresisThresholdUp={simState.hysteresisThresholdUp}
-            hysteresisThresholdDown={simState.hysteresisThresholdDown}
-          />
-        )}
-
-        {/* Tab 5: Code Artifacts, NS-3 C++, WSL2 guide & Viva Defense */}
-        {activeTab === 'artifacts' && <CodeArtifactsViewer />}
-      </main>
-
-      {/* Footer */}
-      <footer className="border-t border-slate-800/80 bg-slate-950 py-4 px-4 lg:px-8 text-xs text-slate-500">
-        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
+        {/* Live Status Readout Banner (Part 20) */}
+        <div
+          className={`p-3 rounded-xl border text-xs font-mono flex items-center justify-between gap-2 transition-all ${
+            simState.manualR2Failure
+              ? 'bg-red-950/30 border-red-500/50 text-red-200'
+              : simState.activeRoute.includes('Route B')
+              ? 'bg-purple-950/30 border-purple-500/50 text-purple-200'
+              : 'bg-emerald-950/30 border-emerald-500/40 text-emerald-200'
+          }`}
+        >
           <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
-            <span>
-              Design and Implementation of a Self-Healing Adaptive Routing Mechanism for Dynamic Computer Networks
-            </span>
-          </div>
-          <div className="font-mono text-[11px] text-slate-400">
-            Topology: PC (0) ─ R1 (1) ─ R2 (2)/R3 (3) ─ R4 (4) ─ Server (5)
-          </div>
-        </div>
-      </footer>
-      {/* Deploy to Vercel Modal */}
-      {showVercelModal && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-2xl w-full p-6 shadow-2xl space-y-5">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-black flex items-center justify-center border border-slate-700">
-                  <svg viewBox="0 0 116 100" fill="#fff" className="w-4 h-4">
-                    <path d="M57.5 0L115 100H0L57.5 0z" />
-                  </svg>
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-slate-100">Deploy to Vercel</h3>
-                  <p className="text-xs text-slate-400">
-                    Configuration is pre-built with <code className="text-sky-300">vercel.json</code> and static SPA rewrites.
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={() => setShowVercelModal(false)}
-                className="text-slate-400 hover:text-slate-200 p-1.5 rounded-lg bg-slate-800"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="space-y-4 text-xs text-slate-300">
-              {/* Method 1: Git / GitHub (Recommended) */}
-              <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
-                <div className="font-bold text-emerald-400 flex items-center gap-1.5">
-                  <CheckCircle2 className="w-4 h-4" />
-                  Method 1: Direct GitHub / Vercel Web Import (Zero CLI Required)
-                </div>
-                <ol className="list-decimal list-inside space-y-1 text-slate-400 leading-relaxed">
-                  <li>
-                    Click the <strong>Settings</strong> menu in the top right of Google AI Studio and choose <strong>"Export to GitHub"</strong> or <strong>"Download ZIP"</strong>.
-                  </li>
-                  <li>
-                    Push the repository to your GitHub account (e.g., <code className="text-slate-200">github.com/your-username/self-healing-network</code>).
-                  </li>
-                  <li>
-                    Go to{' '}
-                    <a
-                      href="https://vercel.com/new"
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-sky-400 hover:underline inline-flex items-center gap-0.5 font-bold"
-                    >
-                      vercel.com/new <ExternalLink className="w-3 h-3" />
-                    </a>{' '}
-                    and click <strong>Import</strong> next to your repository.
-                  </li>
-                  <li>
-                    Vercel automatically detects the framework preset as <strong>Vite</strong> with output directory <code className="text-slate-200">dist</code> and routes via <code className="text-slate-200">vercel.json</code>.
-                  </li>
-                  <li>
-                    Click <strong>Deploy</strong>. Your site will be live on a global <code className="text-emerald-300">*.vercel.app</code> domain!
-                  </li>
-                </ol>
-              </div>
-
-              {/* Method 2: Vercel CLI */}
-              <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
-                <div className="font-bold text-sky-400 flex items-center gap-1.5">
-                  <Terminal className="w-4 h-4" />
-                  Method 2: Command Line (Vercel CLI)
-                </div>
-                <p className="text-slate-400">
-                  If running locally or inside terminal, deploy in seconds:
-                </p>
-                <pre className="p-3 rounded-lg bg-slate-900 border border-slate-800 text-sky-300 font-mono text-[11px] overflow-x-auto">
-{`# 1. Install & Login
-npm i -g vercel
-
-# 2. Deploy directly from project folder
-vercel
-
-# 3. Deploy to production domain
-vercel --prod`}
-                </pre>
-              </div>
-
-              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-[11px] text-slate-400 flex items-center justify-between">
+            {simState.manualR2Failure ? (
+              <Zap className="w-4 h-4 text-amber-400 shrink-0" />
+            ) : (
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            )}
+            <div>
+              {simState.manualR2Failure && (
                 <span>
-                  ✓ <code className="text-slate-200">vercel.json</code> is pre-configured with SPA route rewriting.
+                  💥 <strong>R2 Failure Detected</strong> ➔ Self-Healing Failover: Restored to Route B in 1.20s (0% loss)!
                 </span>
-                <span className="font-mono text-emerald-400">Build: vite build (Ready)</span>
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
-              <button
-                onClick={() => setShowVercelModal(false)}
-                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs"
-              >
-                Close
-              </button>
-              <a
-                href="https://vercel.com/new"
-                target="_blank"
-                rel="noreferrer"
-                className="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-lg shadow-emerald-900/30"
-              >
-                Open Vercel Dashboard <ExternalLink className="w-3.5 h-3.5" />
-              </a>
+              )}
+              {!simState.manualR2Failure && simState.activeRoute.includes('Route B') && (
+                <span>
+                  ⚠ <strong>Congestion Detected on R2 (Score: {simState.currentCongestionScore})</strong> ➔ Recalculated: Old route: R1 ➔ R2 ➔ R4 | New route: R1 ➔ R3 ➔ R4 | ✓ <strong>Rerouting Successful</strong>
+                </span>
+              )}
+              {!simState.manualR2Failure && simState.activeRoute.includes('Route A') && (
+                <span>
+                  ✓ <strong>Network Healthy:</strong> Active route: R1 ➔ R2 ➔ R4 | Delay: 30.1 ms | Packet Loss: 0%
+                </span>
+              )}
             </div>
           </div>
+
+          <span className="text-[11px] text-slate-400 font-sans hidden sm:inline">
+            Status: <strong className="text-slate-200">Autonomous</strong>
+          </span>
         </div>
-      )}
+
+        {/* Minimal Network Topology */}
+        <NetworkTopologyView
+          nodes={nodes}
+          links={links}
+          activeRoute={simState.activeRoute}
+          activePathNodeIds={getActivePathNodeIds()}
+          isSimulating={simState.isRunning}
+          onToggleNodeFail={toggleNodeFail}
+        />
+
+        {/* Minimal Metrics Dashboard (PART 19) */}
+        <MetricsDashboard state={simState} nodes={nodes} />
+      </main>
     </div>
   );
 }
