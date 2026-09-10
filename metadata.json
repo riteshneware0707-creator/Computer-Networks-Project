@@ -1,0 +1,6 @@
+{
+  "name": "Self-Healing Adaptive Network",
+  "description": "Design and Implementation of a Self-Healing Adaptive Routing Mechanism for Dynamic Computer Networks with Real-Time Topology, Congestion & Failure Detection, Dynamic Dijkstra Rerouting, Hysteresis, Packet Inspector, and Benchmarks.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
