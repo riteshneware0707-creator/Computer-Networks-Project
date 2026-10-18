@@ -8,7 +8,9 @@
     "build": "vite build",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "backend:dev": "python -m uvicorn backend.app.main:app --reload --host 127.0.0.1 --port 8000",
+    "backend:test": "python -m unittest discover -s backend/tests -v"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
@@ -24,6 +26,8 @@
     "vite": "^6.2.3"
   },
   "devDependencies": {
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
     "@types/node": "^22.14.0",
     "autoprefixer": "^10.4.21",
     "esbuild": "^0.25.0",

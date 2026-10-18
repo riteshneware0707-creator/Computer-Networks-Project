@@ -1,0 +1,13 @@
+{
+  "scenario": "adaptive_routing",
+  "simulationTimeSec": 20,
+  "totalTxPackets": 17578,
+  "totalRxPackets": 4497,
+  "totalLostPackets": 8960,
+  "packetLossPct": 50.9728,
+  "averageDelayMs": 4380.51,
+  "r1R2MaxQueuePackets": 100,
+  "r2R4MaxQueuePackets": 1,
+  "routeSwitchTimeSec": 1.5,
+  "finalRoute": "R1-R3-R4"
+}

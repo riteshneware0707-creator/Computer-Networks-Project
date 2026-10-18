@@ -1,0 +1,9 @@
+{
+  "scenario": "congestion",
+  "txPackets": 17578.0000,
+  "rxPackets": 4497.0000,
+  "lostPackets": 8960.0000,
+  "packetLossPct": 74.4169,
+  "averageDelayMs": 4380.5127,
+  "throughputMbps": 1.9924
+}

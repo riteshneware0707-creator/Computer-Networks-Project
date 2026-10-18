@@ -1,0 +1,17 @@
+{
+  "scenario": "queue_measurement",
+  "simulationTimeSec": 20,
+  "totalTxPackets": 17578,
+  "totalRxPackets": 4497,
+  "totalLostPackets": 8960,
+  "packetLossPct": 50.9728,
+  "averageDelayMs": 4380.51,
+  "r1R2MaxQueuePackets": 100,
+  "r1R2MaxQueueBytes": 105400,
+  "r2R4MaxQueuePackets": 1,
+  "r2R4MaxQueueBytes": 1054,
+  "r1R2UtilizationPct": 100,
+  "r2R4UtilizationPct": 100,
+  "r1R2TxBytes": 4854724,
+  "r2R4TxBytes": 4745108
+}

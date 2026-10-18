@@ -1,0 +1,17 @@
+{
+  "scenario": "verified_adaptive_routing",
+  "simulationTimeSec": 20.0000,
+  "totalTxPackets": 17578,
+  "totalRxPackets": 4497,
+  "totalLostPackets": 8960,
+  "packetLossPct": 50.9728,
+  "averageDelayMs": 4380.5121,
+  "r1R2MaxQueuePackets": 100,
+  "r2R4MaxQueuePackets": 1,
+  "r1R2Packets": 4606,
+  "r2R4Packets": 4502,
+  "r1R3Packets": 0,
+  "r3R4Packets": 0,
+  "routeSwitchTimeSec": 1.5000,
+  "alternateTrafficDetected": false
+}

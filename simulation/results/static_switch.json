@@ -1,0 +1,22 @@
+{
+  "scenario": "adaptive_static_switch",
+  "simulationTimeSec": 20,
+  "trafficRateMbps": 8,
+  "primaryCapacityMbps": 2,
+  "alternateCapacityMbps": 10,
+  "congestionThresholdPackets": 50,
+  "routeSwitched": true,
+  "routeSwitchTimeSec": 1,
+  "totalTxPackets": 19499,
+  "totalRxPackets": 4724,
+  "totalLostPackets": 9441,
+  "packetLossPct": 48.4179,
+  "averageDelayMs": 4478.68,
+  "maxR1R2QueuePackets": 100,
+  "maxR2R4QueuePackets": 0,
+  "r1R2Packets": 4832,
+  "r1R3Packets": 0,
+  "r2R4Packets": 4728,
+  "r3R4Packets": 0,
+  "alternatePathTraffic": false
+}

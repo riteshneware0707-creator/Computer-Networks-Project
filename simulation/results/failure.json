@@ -1,0 +1,15 @@
+{
+  "scenario": "failure_recovery",
+  "failureTimeSec": 8,
+  "recoveryTimeSec": 14,
+  "totalTxPackets": 10986,
+  "totalRxPackets": 10979,
+  "totalLostPackets": 7,
+  "packetLossPct": 0.0637175,
+  "averageDelayMs": 40.0699,
+  "measuredFailoverTimeMs": 1.6384,
+  "lastPacketBeforeFailureSec": 7.99985,
+  "firstPacketAfterFailureSec": 8.00149,
+  "packetsBeforeFailure": 4252,
+  "packetsAfterFailure": 6727
+}

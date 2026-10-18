@@ -175,9 +175,9 @@ export const NetworkTopologyView: React.FC<NetworkTopologyViewProps> = ({
 
                 {/* Node Icon */}
                 <g transform={`translate(${node.x - 10}, ${node.y - 10})`}>
-                  {node.type === 'endpoint' && node.id === 0 ? (
+                  {node.type === 'host' && node.id === 0 ? (
                     <Monitor className="w-5 h-5 text-sky-400" />
-                  ) : node.type === 'endpoint' && node.id === 5 ? (
+                  ) : node.type === 'host' && node.id === 5 ? (
                     <Server className="w-5 h-5 text-emerald-400" />
                   ) : (
                     <Network className="w-5 h-5 text-slate-300" />

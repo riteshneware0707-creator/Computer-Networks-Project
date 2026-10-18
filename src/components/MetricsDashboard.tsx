@@ -12,6 +12,9 @@ export const MetricsDashboard: React.FC<MetricsDashboardProps> = ({ state, nodes
 
   return (
     <div className="space-y-4">
+      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-amber-300">
+        Browser demo metrics — not measured NS-3 output
+      </p>
       {/* 4 Clean Metric Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {/* Metric 1: Current Route */}
