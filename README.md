@@ -24,7 +24,7 @@ reconverge over the alternate path. In both cases, the live panel checks the
 actual route installed in R1 and verifies end-to-end traffic with ping; throughput
 is measured with iperf3.
 
-## Windows setup
+## Install the application dependencies
 
 From the repository root, in PowerShell:
 
@@ -34,59 +34,105 @@ python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r backend\requirements-dev.txt
 Copy-Item .env.example .env
-npm run backend:dev
 ```
 
-In a second terminal:
-
-```powershell
-cd "C:\path\to\CN"
-npm run dev
-```
-
-Open <http://localhost:3000>. The API runs at <http://127.0.0.1:8000>; its
-interactive documentation is at <http://127.0.0.1:8000/docs>. The backend reads
-`simulation/results/` by default. Set `NETWORK_RESULTS_DIR` and `NETWORK_MODEL_PATH`
-in the backend environment to override those paths.
+The backend reads `simulation/results/` by default. Set `NETWORK_RESULTS_DIR`
+and `NETWORK_MODEL_PATH` in the backend environment to override those paths.
 
 Frontend API configuration is in `.env` as `VITE_API_BASE_URL`. A public Vercel
 deployment cannot reach a backend running on a student's laptop at `localhost`;
 deploy the API at a reachable HTTPS origin and set its allowed CORS origin before
 using it from Vercel.
 
-## Run the live Containerlab demo on Windows
+## Run the live Containerlab demo from Windows with WSL2
 
-The local demo uses Docker Desktop with its WSL2 integration enabled, plus
-Containerlab installed in the Ubuntu WSL distribution. Containerlab requires
-Linux and Docker; follow the current installation instructions at
-<https://containerlab.dev/install/>. The FRR image used by the topology is the
-Containerlab-native `quay.io/frrouting/frr:containerlab-10.7.1`.
+Containerlab must use a **native Docker Engine on the same Linux system** where
+Containerlab runs. Docker Desktop's WSL-integrated daemon is remote from Ubuntu;
+Containerlab cannot join its router network namespaces. Use Ubuntu under WSL2
+with systemd and its own native Docker Engine. A separate VM is not required.
 
-1. Install Docker Desktop and enable WSL integration for the Ubuntu distribution.
-   Start Docker Desktop before the demo.
-2. In Ubuntu WSL, install Containerlab using its official instructions, then
-   verify `docker version` and `containerlab version` work in that distribution.
-3. In PowerShell, start the existing FastAPI backend and Vite frontend as
-   described above. The live backend calls the default WSL distribution named
-   `Ubuntu`; set `NETWORK_WSL_DISTRO` to the actual distribution name if yours
-   differs.
-4. Open <http://localhost:3000>, then click **Deploy live network** in the
-   Containerlab panel. The first deployment builds the traffic-host image and
-   downloads the FRR image, so do this once before presentation day while
-   internet access is available.
-5. Run a short ping or iperf check by using the panel status. Click **Inject
-   congestion** to see the measured delay trigger an OSPF cost change and traffic
-   move to R1-R3-R4. Click **Restore primary** to clear impairments.
-6. Click **Fail primary link** to disable the R1-R2 link. OSPF withdraws that
-   path, R1 selects R1-R3-R4, and the panel checks that ping still reaches the
-   server. Click **Restore primary** to recover.
-7. Click **Stop lab** when finished.
+### Install Ubuntu WSL2, Docker Engine, and Containerlab
 
-The API starts the WSL demo runner as root so Containerlab can manage the
-container lab. Keep the backend bound to localhost as configured; do not expose
-the live-control API to a public network. The running routers are Linux containers
-with FRR, not physical routers. This is a live network emulation, not a physical
-hardware deployment.
+In an elevated Windows PowerShell, install/update WSL2 and Ubuntu if needed:
+
+```powershell
+wsl --update
+wsl --install -d Ubuntu
+```
+
+In Ubuntu, enable systemd by creating `/etc/wsl.conf` with:
+
+```bash
+sudo tee /etc/wsl.conf >/dev/null <<'EOF'
+[boot]
+systemd=true
+EOF
+```
+
+Then, in Windows PowerShell, restart WSL:
+
+```powershell
+wsl --shutdown
+```
+
+Reopen Ubuntu and install Docker Engine and Containerlab. This configuration
+gives native Docker its own socket so it does not collide with Docker Desktop:
+
+```bash
+sudo apt update
+sudo apt install -y docker.io iptables curl
+sudo mkdir -p /etc/systemd/system/docker.service.d
+sudo tee /etc/systemd/system/docker.service.d/override.conf >/dev/null <<'EOF'
+[Unit]
+Requires=
+
+[Service]
+ExecStart=
+ExecStart=/usr/bin/dockerd --host=unix:///run/docker-native.sock --group=docker --containerd=/run/containerd/containerd.sock
+EOF
+sudo systemctl daemon-reload
+sudo systemctl enable --now docker
+sudo systemctl restart docker
+sudo docker -H unix:///run/docker-native.sock run --rm hello-world
+sudo docker -H unix:///run/docker-native.sock info --format '{{.OperatingSystem}}'
+curl -sL https://containerlab.dev/setup | sudo -E bash -s "install-containerlab"
+containerlab version
+```
+
+Confirm Docker reports Ubuntu, not Docker Desktop. The backend calls WSL as root
+and selects `/run/docker-native.sock` explicitly. On the first deploy it copies
+the current `emulation` files from the Windows checkout to Linux-native storage
+at `/opt/self-healing-network/emulation`; this avoids Containerlab output-file
+problems on OneDrive/`/mnt/c`. Override the runtime directory, WSL distro, or
+Docker socket with `NETWORK_WSL_RUNTIME_DIR`, `NETWORK_WSL_DISTRO`, or
+`NETWORK_WSL_DOCKER_HOST` in the backend environment if needed.
+
+### Start the backend and dashboard
+
+In PowerShell, from the Windows repository root, start the backend:
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+npm run backend:dev
+```
+
+Open a second PowerShell in the repository root and run:
+
+```powershell
+npm run dev
+```
+
+Open <http://localhost:3000>. In the live panel, click **Deploy live network**.
+Then click **Inject congestion** to see measured delay trigger an OSPF cost
+change and traffic move to R1-R3-R4. Use **Restore primary**, then **Fail primary
+link** to disable the primary interfaces and observe OSPF reconvergence. Restore
+the primary and click **Stop lab** when finished. Deploy once before presentation
+day to pull images and rehearse the complete sequence. Check
+<http://127.0.0.1:8000/api/health> from Windows before the demo.
+
+The routers are Linux containers with FRR, not physical routers. This is live
+network emulation, not a physical hardware deployment. Keep the live-control API
+on a trusted local/private network; do not expose it publicly.
 
 ## Historical NS-3 experiments (optional)
 
@@ -179,9 +225,10 @@ controlled by separate endpoints:
 - `POST /api/live/action` with one action, for example `{"action":"congestion"}`.
   Supported actions are `deploy`, `congestion`, `failure`, `reset`, and `destroy`.
 
-The live endpoint runs real Containerlab/FRR commands through WSL and reports
-observed route and traffic measurements. It is available only on the local demo
-machine with Docker Desktop and Containerlab installed.
+The live endpoint runs real Containerlab/FRR commands on the backend host and
+reports observed route and traffic measurements. On Windows, the backend
+requires WSL2 Ubuntu with a native Docker Engine; Docker Desktop's remote daemon
+is unsupported.
 
 ## Validation
 

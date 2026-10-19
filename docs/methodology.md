@@ -20,8 +20,13 @@ iperf3, and reads R1's primary/alternate interface transmit counters. A route
 lookup by itself is not forwarding proof; the panel only marks forwarding verified
 when the route is known and host-to-server ping succeeds.
 
-Containerlab and FRR require Linux and Docker. On Windows the supported demo path
-is Docker Desktop with WSL2 integration and Containerlab installed in Ubuntu WSL.
+Containerlab and FRR require Linux and a Docker Engine running on that same Linux
+host. Docker Desktop's WSL integration exposes a remote daemon whose container
+network namespaces are not joinable from Ubuntu WSL; the live runner detects and
+rejects that runtime. On Windows, the backend uses Ubuntu WSL2 with systemd and
+a native Docker Engine on a dedicated socket. Before each action it stages the
+current lab files into Linux-native WSL storage, because Containerlab cannot
+reliably write its topology inventory under a Windows-mounted OneDrive path.
 This is live container-based network emulation, not physical router hardware.
 
 ## Historical NS-3 data path

@@ -10,15 +10,41 @@ from fastapi import HTTPException
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 DEMO_SCRIPT = PROJECT_ROOT / "emulation" / "demo.py"
 SUPPORTED_ACTIONS = {"status", "deploy", "congestion", "failure", "reset", "destroy"}
+WSL_RUNTIME_DIR = os.environ.get("NETWORK_WSL_RUNTIME_DIR", "/opt/self-healing-network")
 
 
-def _wsl_script_path() -> tuple[str, str]:
+def _wsl_paths() -> tuple[str, str, str]:
     distro = os.environ.get("NETWORK_WSL_DISTRO", "Ubuntu")
-    drive, path = ntpath.splitdrive(str(DEMO_SCRIPT.resolve()))
+    drive, path = ntpath.splitdrive(str(DEMO_SCRIPT.parent.resolve()))
     if not drive or not path.startswith("\\"):
         raise OSError(f"Cannot map the live lab path into WSL: {DEMO_SCRIPT}")
-    wsl_path = f"/mnt/{drive[0].lower()}{path.replace(chr(92), '/')}"
-    return distro, wsl_path
+    source_dir = f"/mnt/{drive[0].lower()}{path.replace(chr(92), '/')}"
+    return distro, source_dir, f"{WSL_RUNTIME_DIR}/emulation"
+
+
+def _stage_wsl_lab(distro: str, source_dir: str, runtime_dir: str) -> None:
+    wsl = ["wsl.exe", "-d", distro, "-u", "root", "--"]
+
+    def stage(command: list[str]) -> None:
+        result = subprocess.run(
+            wsl + command,
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=False,
+        )
+        if result.returncode:
+            detail = result.stderr.strip() or result.stdout.strip()
+            raise OSError(detail or f"WSL staging command failed: {' '.join(command)}")
+
+    stage(["mkdir", "-p", f"{runtime_dir}/configs", f"{runtime_dir}/hosts"])
+    for source, destination in (
+        (f"{source_dir}/demo.py", f"{runtime_dir}/demo.py"),
+        (f"{source_dir}/topology.clab.yml", f"{runtime_dir}/topology.clab.yml"),
+    ):
+        stage(["cp", "-f", source, destination])
+    for directory in ("configs", "hosts"):
+        stage(["cp", "-a", f"{source_dir}/{directory}/.", f"{runtime_dir}/{directory}/"])
 
 
 def run_live_action(action: str) -> dict[str, Any]:
@@ -27,7 +53,8 @@ def run_live_action(action: str) -> dict[str, Any]:
 
     try:
         if os.name == "nt":
-            distro, script_path = _wsl_script_path()
+            distro, source_dir, runtime_dir = _wsl_paths()
+            _stage_wsl_lab(distro, source_dir, runtime_dir)
             command = [
                 "wsl.exe",
                 "-d",
@@ -35,8 +62,10 @@ def run_live_action(action: str) -> dict[str, Any]:
                 "-u",
                 "root",
                 "--",
+                "env",
+                f"NETWORK_DOCKER_HOST={os.environ.get('NETWORK_WSL_DOCKER_HOST', 'unix:///run/docker-native.sock')}",
                 "python3",
-                script_path,
+                f"{runtime_dir}/demo.py",
                 action,
             ]
         else:
@@ -45,7 +74,7 @@ def run_live_action(action: str) -> dict[str, Any]:
             command,
             capture_output=True,
             text=True,
-            timeout=240 if action in {"deploy", "destroy"} else 90,
+            timeout=600 if action == "deploy" else 180,
             check=False,
         )
     except (OSError, subprocess.SubprocessError) as error:
@@ -69,6 +98,12 @@ def run_live_action(action: str) -> dict[str, Any]:
     if result.returncode != 0:
         detail = result.stderr.strip() or result.stdout.strip() or "Live lab command failed."
         if action == "status":
+            try:
+                payload = json.loads(detail)
+                if isinstance(payload, dict) and isinstance(payload.get("error"), str):
+                    detail = payload["error"]
+            except json.JSONDecodeError:
+                pass
             return {
                 "available": False,
                 "running": False,

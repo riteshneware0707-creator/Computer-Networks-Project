@@ -19,6 +19,7 @@ export function LiveNetworkPanel() {
   const refresh = useCallback(async () => {
     try {
       setStatus(await getLiveLabStatus());
+      setError('');
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Unable to read live lab status.');
     }
@@ -75,8 +76,9 @@ export function LiveNetworkPanel() {
 
       {!running && (
         <p className="mt-3 text-sm text-slate-300">
-          Start the Docker Desktop engine and install Containerlab in WSL2 Ubuntu, then deploy the lab here.
-          The browser-only controls below are not a substitute for this live network.
+          Start the local FastAPI service and make sure Ubuntu WSL2 is running its native Docker Engine
+          and Containerlab, then deploy the lab here. Docker Desktop's integrated engine is not
+          supported for this live network. The browser-only controls below are not a substitute.
         </p>
       )}
 

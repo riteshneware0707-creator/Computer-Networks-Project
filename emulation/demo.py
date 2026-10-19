@@ -20,6 +20,11 @@ class LabError(RuntimeError):
 
 
 def run(command, timeout=20, check=True, cwd=None):
+    environment = os.environ.copy()
+    environment["DOCKER_HOST"] = os.environ.get(
+        "NETWORK_DOCKER_HOST",
+        environment.get("DOCKER_HOST", "unix:///var/run/docker.sock"),
+    )
     result = subprocess.run(
         command,
         capture_output=True,
@@ -27,6 +32,7 @@ def run(command, timeout=20, check=True, cwd=None):
         timeout=timeout,
         check=False,
         cwd=cwd,
+        env=environment,
     )
     if check and result.returncode:
         detail = result.stderr.strip() or result.stdout.strip()
@@ -42,13 +48,26 @@ def docker_exec(node, *command, timeout=20, check=True):
     return run(["docker", "exec", container(node), *command], timeout=timeout, check=check)
 
 
-def lab_running():
-    run(["docker", "info"], timeout=10)
-    result = run(
-        ["docker", "inspect", "-f", "{{.State.Running}}", container("r1")],
-        check=False,
-    )
-    return result.returncode == 0 and result.stdout.strip() == "true"
+LAB_NODES = ("pc", "r1", "r2", "r3", "r4", "server")
+
+
+def lab_container_states():
+    info = run(["docker", "info", "--format", "{{.OperatingSystem}}"], timeout=10)
+    if "Docker Desktop" in info.stdout:
+        raise LabError(
+            "Containerlab needs a Docker Engine running locally in Linux so it can "
+            "join router network namespaces. Docker Desktop's WSL-integrated daemon "
+            "does not expose those namespaces to Ubuntu WSL. Use a native Docker "
+            "Engine inside Ubuntu WSL or on a Linux host."
+        )
+    states = {}
+    for node in LAB_NODES:
+        result = run(
+            ["docker", "inspect", "-f", "{{.State.Status}}", container(node)],
+            check=False,
+        )
+        states[node] = result.stdout.strip() if result.returncode == 0 else "missing"
+    return states
 
 
 def set_ospf_cost(node, interface, cost):
@@ -125,11 +144,16 @@ def interface_packets(interface):
 
 
 def status(event=None):
-    if not lab_running():
+    states = lab_container_states()
+    if not all(state == "running" for state in states.values()):
+        existing = {node: state for node, state in states.items() if state != "missing"}
+        if existing:
+            details = ", ".join(f"{node}: {state}" for node, state in existing.items())
+            event = event or f"Lab deployment is incomplete ({details}); deploy again to recreate it."
         return {
             "available": True,
             "running": False,
-            "network_state": "stopped",
+            "network_state": "error" if existing else "stopped",
             "selected_route": None,
             "primary_link_delay_ms": None,
             "packet_loss_pct": None,
@@ -199,6 +223,14 @@ def status(event=None):
 
 
 def deploy():
+    existing = lab_container_states()
+    if any(state != "missing" for state in existing.values()):
+        run(
+            ["containerlab", "destroy", "-t", str(TOPOLOGY)],
+            timeout=120,
+            check=False,
+            cwd=ROOT,
+        )
     run(
         ["docker", "build", "-t", HOST_IMAGE, str(ROOT / "hosts")],
         timeout=180,
@@ -208,7 +240,7 @@ def deploy():
         timeout=240,
         cwd=ROOT,
     )
-    wait_for_route("eth2", timeout=45)
+    wait_for_route("eth2", timeout=90)
     return status("Containerlab deployed; live host-to-server traffic is passing.")
 
 
@@ -218,7 +250,7 @@ def reset():
         docker_exec(node, "ip", "link", "set", "dev", interface, "up", check=False)
     set_ospf_cost("r1", "eth2", 10)
     set_ospf_cost("r2", "eth1", 10)
-    wait_for_route("eth2")
+    wait_for_route("eth2", timeout=60)
     return status("Primary route restored; congestion shaping and failure cleared.")
 
 
@@ -236,7 +268,7 @@ def induce_congestion():
             f"Injected congestion was not measured above the 50 ms threshold "
             f"(measured {measured_delay:.2f} ms)."
         )
-    wait_for_route("eth3")
+    wait_for_route("eth3", timeout=60)
     return status(
         f"Controller measured {measured_delay:.1f} ms primary-link delay "
         "and raised its OSPF cost; traffic moved to the alternate route."
@@ -246,7 +278,7 @@ def induce_congestion():
 def induce_failure():
     docker_exec("r1", "ip", "link", "set", "dev", "eth2", "down")
     docker_exec("r2", "ip", "link", "set", "dev", "eth1", "down")
-    wait_for_route("eth3")
+    wait_for_route("eth3", timeout=60)
     return status("Primary link failed; OSPF withdrew the route and traffic uses the alternate.")
 
 
