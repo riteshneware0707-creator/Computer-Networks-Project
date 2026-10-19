@@ -65,6 +65,23 @@ export interface NetworkEvent {
   severity: string;
 }
 
+export type LiveLabAction = 'deploy' | 'congestion' | 'failure' | 'reset' | 'destroy';
+
+export interface LiveLabStatus {
+  available: boolean;
+  running: boolean;
+  network_state: string;
+  selected_route: 'primary' | 'alternate' | null;
+  primary_link_delay_ms: number | null;
+  packet_loss_pct: number | null;
+  average_delay_ms: number | null;
+  throughput_mbps: number | null;
+  primary_tx_packets: number | null;
+  alternate_tx_packets: number | null;
+  forwarding_verified: boolean;
+  event: string | null;
+}
+
 const baseUrl = (import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000').replace(/\/+$/, '');
 
 async function request<T>(path: string, signal?: AbortSignal, body?: unknown): Promise<T> {
@@ -114,4 +131,12 @@ export function analyzeExperiment(experimentId: string, signal?: AbortSignal) {
     signal,
     { experiment_id: experimentId }
   );
+}
+
+export function getLiveLabStatus(signal?: AbortSignal) {
+  return request<LiveLabStatus>('/api/live/status', signal);
+}
+
+export function runLiveLabAction(action: LiveLabAction, signal?: AbortSignal) {
+  return request<LiveLabStatus>('/api/live/action', signal, { action });
 }

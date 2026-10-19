@@ -9,6 +9,7 @@ import {
 import { INITIAL_LINKS, INITIAL_NODES, INITIAL_WEIGHTS } from './services/networkData';
 import { calculateCongestionScore } from './services/simulationCalculations';
 import { ExperimentPanel } from './components/ExperimentPanel';
+import { LiveNetworkPanel } from './components/LiveNetworkPanel';
 import { NetworkTopologyView } from './components/NetworkTopologyView';
 import { MetricsDashboard } from './components/MetricsDashboard';
 import {
@@ -305,10 +306,11 @@ export default function App() {
       </header>
 
       <main className="flex-1 max-w-5xl w-full mx-auto p-4 sm:p-6 space-y-4">
+        <LiveNetworkPanel />
+
         <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
-          <strong>Browser demo only:</strong> interactive controls and the animated topology are illustrative;
-          they do not execute NS-3 or prove packets were redirected. Use recorded experiment data below for
-          measured values and forwarding evidence.
+          <strong>Illustrative browser demo:</strong> controls and animated metrics below do not alter the live
+          Containerlab network. Use the live panel above for packet-forwarding and failover evidence.
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">

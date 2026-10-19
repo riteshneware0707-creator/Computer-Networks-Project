@@ -1,5 +1,6 @@
 import asyncio
 import unittest
+from unittest.mock import patch
 
 import httpx
 
@@ -79,6 +80,36 @@ class ApiTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.headers["access-control-allow-origin"], "http://localhost:3000")
+
+    def test_live_status_and_action_use_live_lab_service(self):
+        live_status = {
+            "available": True,
+            "running": True,
+            "network_state": "normal",
+            "selected_route": "primary",
+            "primary_link_delay_ms": 1.2,
+            "packet_loss_pct": 0,
+            "average_delay_ms": 1.2,
+            "throughput_mbps": 8.0,
+            "primary_tx_packets": 20,
+            "alternate_tx_packets": 0,
+            "forwarding_verified": True,
+            "event": None,
+        }
+        with patch("backend.app.main.run_live_action", return_value=live_status) as action:
+            response = self.request("GET", "/api/live/status")
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json()["selected_route"], "primary")
+            action.assert_called_once_with("status")
+
+        with patch("backend.app.main.run_live_action", return_value=live_status) as action:
+            response = self.request("POST", "/api/live/action", json={"action": "congestion"})
+            self.assertEqual(response.status_code, 200)
+            action.assert_called_once_with("congestion")
+
+    def test_live_api_rejects_unknown_action(self):
+        response = self.request("POST", "/api/live/action", json={"action": "shell"})
+        self.assertEqual(response.status_code, 422)
 
 
 if __name__ == "__main__":

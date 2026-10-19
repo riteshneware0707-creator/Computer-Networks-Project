@@ -1,0 +1,40 @@
+name: self-healing
+
+topology:
+  nodes:
+    pc:
+      kind: linux
+      image: cn-live-host:1
+      env:
+        HOST_IP: 10.0.1.2/24
+        DEFAULT_GATEWAY: 10.0.1.1
+    r1:
+      kind: frr
+      image: quay.io/frrouting/frr:containerlab-10.7.1
+      startup-config: configs/r1.conf
+    r2:
+      kind: frr
+      image: quay.io/frrouting/frr:containerlab-10.7.1
+      startup-config: configs/r2.conf
+    r3:
+      kind: frr
+      image: quay.io/frrouting/frr:containerlab-10.7.1
+      startup-config: configs/r3.conf
+    r4:
+      kind: frr
+      image: quay.io/frrouting/frr:containerlab-10.7.1
+      startup-config: configs/r4.conf
+    server:
+      kind: linux
+      image: cn-live-host:1
+      env:
+        HOST_IP: 10.0.4.2/24
+        DEFAULT_GATEWAY: 10.0.4.1
+        START_IPERF_SERVER: "true"
+  links:
+    - endpoints: ["pc:eth1", "r1:eth1"]
+    - endpoints: ["r1:eth2", "r2:eth1"]
+    - endpoints: ["r2:eth2", "r4:eth1"]
+    - endpoints: ["r1:eth3", "r3:eth1"]
+    - endpoints: ["r3:eth2", "r4:eth2"]
+    - endpoints: ["r4:eth3", "server:eth1"]

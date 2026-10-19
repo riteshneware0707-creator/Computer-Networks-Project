@@ -1,8 +1,32 @@
 # Architecture, methodology, and viva notes
 
-## Data path
+## Live Containerlab/FRR demo
 
-1. NS-3 executes a predefined topology and writes one result JSON per run.
+The classroom demonstration runs six Linux containers under Containerlab:
+`PC—R1—R2—R4—Server`, with `R1—R3—R4` as the alternate path. R1–R4 run FRRouting
+and OSPF; the PC and server use Linux networking, ping, and iperf3. The FastAPI
+service invokes the local WSL2 lab runner, and the React live panel shows current
+measurements and route evidence.
+
+The congestion action adds `netem` delay to both ends of the primary R1-R2 link,
+measures the delay with a ping probe, and raises OSPF interface costs when the
+measurement exceeds 50 ms. OSPF then selects the lower-cost alternate path. The
+failure action administratively disables the primary interfaces and relies on
+OSPF to withdraw the route and reconverge. Recovery removes the impairment,
+restores the interfaces, and returns their configured OSPF costs to baseline.
+
+The panel reads R1's actual kernel route to the server, runs end-to-end ping and
+iperf3, and reads R1's primary/alternate interface transmit counters. A route
+lookup by itself is not forwarding proof; the panel only marks forwarding verified
+when the route is known and host-to-server ping succeeds.
+
+Containerlab and FRR require Linux and Docker. On Windows the supported demo path
+is Docker Desktop with WSL2 integration and Containerlab installed in Ubuntu WSL.
+This is live container-based network emulation, not physical router hardware.
+
+## Historical NS-3 data path
+
+1. NS-3 previously executed a predefined topology and wrote one result JSON per run.
 2. The FastAPI service validates files against `simulation/schema.json`, then
    normalizes fields from both the older experiment output and the current schema.
    Missing measurements remain `null`; the service does not fill them with demo
@@ -15,8 +39,8 @@
    delays provide base costs; measured loss, delay, queue, utilization, and the
    state penalty adjust primary-path cost. A confirmed unavailable primary path is
    removed from the feasible graph. Weights are environment-configurable.
-5. The React client reads those API results. Its separate browser controls remain a
-   clearly labeled demo and are not used as simulator data.
+5. The recorded-experiment UI reads those historical API results. The separate
+   browser controls remain an illustrative demo and are not used as measured data.
 
 The classifier predicts a network state; Dijkstra selects a path. Neither
 prediction nor route selection means that a route was installed or that packets

@@ -11,16 +11,18 @@ from backend.app.schemas import (
     EventsResponse,
     ExperimentList,
     ExperimentSummary,
+    LiveLabActionRequest,
     NetworkEvent,
     TopologyResponse,
 )
 from backend.app.services.controller import analyze
 from backend.app.services.experiments import get_experiment, get_results_dir, list_experiments
+from backend.app.services.live_lab import run_live_action
 
 app = FastAPI(
     title="Self-Healing Adaptive Network API",
     version="0.1.0",
-    description="Validated access to recorded NS-3 experiments and route recommendations.",
+    description="Live Containerlab/FRR controls and validated access to historical NS-3 experiments.",
 )
 origins = [
     origin.strip()
@@ -163,3 +165,13 @@ def latest_metrics() -> ExperimentSummary:
 @app.post("/api/controller/analyze", response_model=ControllerAnalysis)
 def analyze_experiment(request: AnalyzeRequest) -> ControllerAnalysis:
     return analyze(get_experiment(request.experiment_id))
+
+
+@app.get("/api/live/status")
+def live_status() -> dict:
+    return run_live_action("status")
+
+
+@app.post("/api/live/action")
+def live_action(request: LiveLabActionRequest) -> dict:
+    return run_live_action(request.action)

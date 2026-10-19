@@ -92,6 +92,10 @@ class AnalyzeRequest(BaseModel):
     experiment_id: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
 
 
+class LiveLabActionRequest(BaseModel):
+    action: str = Field(pattern=r"^(deploy|congestion|failure|reset|destroy)$")
+
+
 class RouteCost(BaseModel):
     route: str
     path: list[str]

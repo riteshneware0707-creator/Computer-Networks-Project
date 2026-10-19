@@ -1,21 +1,28 @@
-# Innovative Approach to a Self-Healing Adaptive Network
+# Self-Healing Adaptive Network
 
-This repository now contains the original React dashboard, an NS-3 experiment
-runner for WSL2, a validating FastAPI service, a Dijkstra route recommender, and
-a run-isolated scikit-learn training/evaluation pipeline.
+The primary classroom demonstration is a live, container-based network lab built
+with Containerlab and FRRouting (FRR). The lab runs Linux router containers,
+exchanges OSPF routes, forwards real IP traffic, and exposes measured route and
+traffic evidence in the dashboard. The repository also retains the earlier NS-3
+experiments as historical simulation results; they are not the live lab.
 
-## What is and is not simulated
+## What is and is not live
 
-The interactive controls and animated network at the top of the dashboard remain
-a **browser-only demonstration**. Their displayed values are illustrative; they
-do not run NS-3 and do not verify packet forwarding. The **Recorded NS-3 results**
-panel loads the actual JSON files from the backend and displays route application
-and packet-counter evidence independently.
+- **Live Containerlab panel:** buttons deploy the lab, introduce a measured
+  congestion condition, fail and restore the primary link, and report the
+  selected route, ping/iperf3 measurements, and router interface counters.
+- **Browser demonstration:** the older animated topology and its controls are
+  illustrative UI state. They do not change the Containerlab routes or prove
+  packet forwarding.
+- **Recorded NS-3 results:** the experiment panel is retained for inspecting
+  older JSON measurements. Those files are not live Containerlab telemetry.
 
-The current adaptive NS-3 scenario applies a `/32` static host route at R1 and
-observes the R1-R3 and R3-R4 transmit counters after the switch. A recorded switch
-decision, an attempted route installation, and verified packet forwarding are
-separate fields. The backend never turns a recommendation into forwarding proof.
+The congestion action applies Linux `netem` delay to the primary link, measures
+the resulting delay, and then raises the OSPF cost when the configured threshold
+is crossed. The failure action disables the primary interfaces and lets OSPF
+reconverge over the alternate path. In both cases, the live panel checks the
+actual route installed in R1 and verifies end-to-end traffic with ping; throughput
+is measured with iperf3.
 
 ## Windows setup
 
@@ -47,10 +54,46 @@ deployment cannot reach a backend running on a student's laptop at `localhost`;
 deploy the API at a reachable HTTPS origin and set its allowed CORS origin before
 using it from Vercel.
 
-## Run NS-3 in WSL2
+## Run the live Containerlab demo on Windows
 
-NS-3 runs locally in WSL, not in Vercel. With the repo mounted under `/mnt/c` and
-NS-3 installed at `$HOME/ns-3-dev`:
+The local demo uses Docker Desktop with its WSL2 integration enabled, plus
+Containerlab installed in the Ubuntu WSL distribution. Containerlab requires
+Linux and Docker; follow the current installation instructions at
+<https://containerlab.dev/install/>. The FRR image used by the topology is the
+Containerlab-native `quay.io/frrouting/frr:containerlab-10.7.1`.
+
+1. Install Docker Desktop and enable WSL integration for the Ubuntu distribution.
+   Start Docker Desktop before the demo.
+2. In Ubuntu WSL, install Containerlab using its official instructions, then
+   verify `docker version` and `containerlab version` work in that distribution.
+3. In PowerShell, start the existing FastAPI backend and Vite frontend as
+   described above. The live backend calls the default WSL distribution named
+   `Ubuntu`; set `NETWORK_WSL_DISTRO` to the actual distribution name if yours
+   differs.
+4. Open <http://localhost:3000>, then click **Deploy live network** in the
+   Containerlab panel. The first deployment builds the traffic-host image and
+   downloads the FRR image, so do this once before presentation day while
+   internet access is available.
+5. Run a short ping or iperf check by using the panel status. Click **Inject
+   congestion** to see the measured delay trigger an OSPF cost change and traffic
+   move to R1-R3-R4. Click **Restore primary** to clear impairments.
+6. Click **Fail primary link** to disable the R1-R2 link. OSPF withdraws that
+   path, R1 selects R1-R3-R4, and the panel checks that ping still reaches the
+   server. Click **Restore primary** to recover.
+7. Click **Stop lab** when finished.
+
+The API starts the WSL demo runner as root so Containerlab can manage the
+container lab. Keep the backend bound to localhost as configured; do not expose
+the live-control API to a public network. The running routers are Linux containers
+with FRR, not physical routers. This is a live network emulation, not a physical
+hardware deployment.
+
+## Historical NS-3 experiments (optional)
+
+The earlier NS-3 runner and results remain available for reproducibility, but
+they are not required for the live classroom demo. NS-3 runs locally in WSL, not
+in Vercel. With the repo mounted under `/mnt/c` and NS-3 installed at
+`$HOME/ns-3-dev`:
 
 ```bash
 cd /mnt/c/path/to/CN
@@ -78,7 +121,7 @@ at `FAILURE_AT_SEC` and applies the alternate host route. `recovery` additionall
 restores the primary interface at `RESTORE_AT_SEC`. Results are separate JSON files
 in `simulation/results/`; choose a new `EXPERIMENT_ID` for every run.
 
-The route-application experiment was built and run against the available WSL NS-3
+The earlier route-application experiment was built and run against a WSL NS-3
 tree. One recorded adaptive run used 8 Mbps offered load, 2 Mbps primary links,
 10 Mbps alternate links, and 20 seconds of simulation. Its result file reports
 17,096 packets on each alternate link after the route was applied, with the first
@@ -128,9 +171,17 @@ with more varied runs before making accuracy claims.
 - `GET /api/routes/current`
 - `GET /api/events`
 
-The controller endpoint returns a route recommendation and computed costs. It
-does not change an already completed NS-3 run; `route_application_attempted` and
-`forwarding_verified` reflect recorded evidence only.
+The recorded-experiment controller endpoint returns a route recommendation and
+computed costs; it does not change an already completed run. The live lab is
+controlled by separate endpoints:
+
+- `GET /api/live/status`
+- `POST /api/live/action` with one action, for example `{"action":"congestion"}`.
+  Supported actions are `deploy`, `congestion`, `failure`, `reset`, and `destroy`.
+
+The live endpoint runs real Containerlab/FRR commands through WSL and reports
+observed route and traffic measurements. It is available only on the local demo
+machine with Docker Desktop and Containerlab installed.
 
 ## Validation
 
