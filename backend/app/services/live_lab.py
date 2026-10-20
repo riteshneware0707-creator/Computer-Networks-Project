@@ -91,6 +91,10 @@ def run_live_action(action: str) -> dict[str, Any]:
                 "primary_tx_packets": None,
                 "alternate_tx_packets": None,
                 "forwarding_verified": False,
+                "route_convergence_ms": None,
+                "transition_packet_loss_pct": None,
+                "transition_packets_transmitted": None,
+                "transition_packets_received": None,
                 "event": str(error),
             }
         raise HTTPException(status_code=503, detail=f"Live lab command failed: {error}") from error
@@ -116,6 +120,10 @@ def run_live_action(action: str) -> dict[str, Any]:
                 "primary_tx_packets": None,
                 "alternate_tx_packets": None,
                 "forwarding_verified": False,
+                "route_convergence_ms": None,
+                "transition_packet_loss_pct": None,
+                "transition_packets_transmitted": None,
+                "transition_packets_received": None,
                 "event": detail,
             }
         raise HTTPException(status_code=503, detail=detail)

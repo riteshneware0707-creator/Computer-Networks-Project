@@ -20,6 +20,23 @@ iperf3, and reads R1's primary/alternate interface transmit counters. A route
 lookup by itself is not forwarding proof; the panel only marks forwarding verified
 when the route is known and host-to-server ping succeeds.
 
+For each route-changing action, the runner starts continuous host-to-server ping
+probes before applying the change, times until R1's kernel route uses the expected
+interface, and then reports packet loss from the probe summary. Deploy records
+baseline ping loss, average RTT, and iperf3 throughput. Action measurements are
+appended as timestamped JSON Lines in the Linux-native runtime directory at
+`emulation/results/live-demo-evidence.jsonl`. Convergence timing is the observed
+route-change interval, not a claim of universal OSPF convergence performance;
+packet loss is based on the finite probes during that transition. Repeated trials
+are required for comparisons. Router-to-router interfaces use OSPF point-to-point
+network type, since each emulated link has exactly two endpoints; this avoids the
+default broadcast DR/BDR election wait when restoring a link. A redeploy cleans
+Containerlab's generated lab directory first so old generated router configs
+cannot silently override the current source configuration. The emulated
+point-to-point links use 1-second Hello and 4-second Dead intervals to make
+recovery observable promptly; these lab-specific timers should not be generalized
+to production networks.
+
 Containerlab and FRR require Linux and a Docker Engine running on that same Linux
 host. Docker Desktop's WSL integration exposes a remote daemon whose container
 network namespaces are not joinable from Ubuntu WSL; the live runner detects and

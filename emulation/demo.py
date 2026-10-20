@@ -4,6 +4,7 @@ import re
 import subprocess
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 
@@ -13,6 +14,9 @@ HOST_IMAGE = "cn-live-host:1"
 CONTAINER_PREFIX = "clab-self-healing-"
 PRIMARY_HOP = "10.0.12.2"
 ALTERNATE_HOP = "10.0.13.2"
+TRANSITION_PING_LOG = "/tmp/clab-transition-ping.log"
+TRANSITION_PING_PID = "/tmp/clab-transition-ping.pid"
+EVIDENCE_LOG = ROOT / "results" / "live-demo-evidence.jsonl"
 
 
 class LabError(RuntimeError):
@@ -98,13 +102,14 @@ def route_to_server():
     )
 
 
-def wait_for_route(expected_interface, timeout=25):
-    deadline = time.monotonic() + timeout
+def wait_for_route(expected_interface, timeout=25, started_at=None):
+    started_at = time.monotonic() if started_at is None else started_at
+    deadline = started_at + timeout
     while time.monotonic() < deadline:
         _, interface = route_to_server()
         if interface == expected_interface:
-            return
-        time.sleep(1)
+            return round((time.monotonic() - started_at) * 1000, 1)
+        time.sleep(0.25)
     next_hop, interface = route_to_server()
     raise LabError(
         f"Route did not converge to {expected_interface}; "
@@ -121,13 +126,73 @@ def parse_ping(output):
     )
 
 
-def ping(node, destination, interface=None):
-    command = ["ping", "-c", "3", "-W", "2"]
+def ping(node, destination, interface=None, count=3):
+    command = ["ping", "-c", str(count), "-W", "2"]
     if interface:
         command.extend(["-I", interface])
     command.append(destination)
     result = docker_exec(node, *command, timeout=12, check=False)
     return parse_ping(result.stdout + result.stderr)
+
+
+def start_transition_probe():
+    result = docker_exec(
+        "pc",
+        "sh",
+        "-c",
+        f"(ping -D -i 0.2 10.0.4.2 > {TRANSITION_PING_LOG} 2>&1 "
+        f"& echo $! > {TRANSITION_PING_PID})",
+        check=False,
+    )
+    if result.returncode:
+        raise LabError(f"Could not start end-to-end recovery probes: {result.stderr.strip()}")
+    pid = docker_exec("pc", "cat", TRANSITION_PING_PID, check=False)
+    if pid.returncode or not pid.stdout.strip().isdigit():
+        raise LabError("The end-to-end recovery probe did not start.")
+
+
+def stop_transition_probe():
+    result = docker_exec(
+        "pc",
+        "sh",
+        "-c",
+        f'kill -INT "$(cat {TRANSITION_PING_PID})"; sleep 0.3; '
+        f"cat {TRANSITION_PING_LOG}; rm -f {TRANSITION_PING_PID} {TRANSITION_PING_LOG}",
+        check=False,
+    )
+    if result.returncode:
+        raise LabError(f"Could not collect end-to-end recovery probes: {result.stderr.strip()}")
+    output = result.stdout + result.stderr
+    loss, _ = parse_ping(output)
+    counts = re.search(r"(\d+) packets transmitted, (\d+) (?:packets )?received", output)
+    if loss is None or counts is None:
+        raise LabError(f"Recovery probe output did not include packet statistics: {output.strip()}")
+    return {
+        "transition_packet_loss_pct": loss,
+        "transition_packets_transmitted": int(counts.group(1)),
+        "transition_packets_received": int(counts.group(2)),
+    }
+
+
+def measure_route_transition(expected_interface, change, timeout=60):
+    start_transition_probe()
+    started_at = time.monotonic()
+    try:
+        change()
+        convergence_ms = wait_for_route(
+            expected_interface,
+            timeout=timeout,
+            started_at=started_at,
+        )
+        time.sleep(0.4)
+        probe_metrics = stop_transition_probe()
+    except (LabError, OSError, subprocess.TimeoutExpired):
+        stop_transition_probe()
+        raise
+    return {
+        "route_convergence_ms": convergence_ms,
+        **probe_metrics,
+    }
 
 
 def interface_packets(interface):
@@ -162,6 +227,10 @@ def status(event=None):
             "primary_tx_packets": None,
             "alternate_tx_packets": None,
             "forwarding_verified": False,
+            "route_convergence_ms": None,
+            "transition_packet_loss_pct": None,
+            "transition_packets_transmitted": None,
+            "transition_packets_received": None,
             "event": event,
         }
 
@@ -218,19 +287,21 @@ def status(event=None):
         "forwarding_verified": (
             selected_route is not None and packet_loss is not None and packet_loss < 100
         ),
+        "route_convergence_ms": None,
+        "transition_packet_loss_pct": None,
+        "transition_packets_transmitted": None,
+        "transition_packets_received": None,
         "event": event,
     }
 
 
 def deploy():
-    existing = lab_container_states()
-    if any(state != "missing" for state in existing.values()):
-        run(
-            ["containerlab", "destroy", "-t", str(TOPOLOGY)],
-            timeout=120,
-            check=False,
-            cwd=ROOT,
-        )
+    lab_container_states()
+    run(
+        ["containerlab", "destroy", "--cleanup", "-t", str(TOPOLOGY)],
+        timeout=180,
+        cwd=ROOT,
+    )
     run(
         ["docker", "build", "-t", HOST_IMAGE, str(ROOT / "hosts")],
         timeout=180,
@@ -241,17 +312,24 @@ def deploy():
         cwd=ROOT,
     )
     wait_for_route("eth2", timeout=90)
-    return status("Containerlab deployed; live host-to-server traffic is passing.")
+    result = status("Containerlab deployed; live host-to-server traffic is passing.")
+    if not result["forwarding_verified"]:
+        raise LabError("The lab started, but host-to-server forwarding could not be verified.")
+    return result
 
 
 def reset():
-    for node, interface in (("r1", "eth2"), ("r2", "eth1")):
-        docker_exec(node, "tc", "qdisc", "del", "dev", interface, "root", check=False)
-        docker_exec(node, "ip", "link", "set", "dev", interface, "up", check=False)
-    set_ospf_cost("r1", "eth2", 10)
-    set_ospf_cost("r2", "eth1", 10)
-    wait_for_route("eth2", timeout=60)
-    return status("Primary route restored; congestion shaping and failure cleared.")
+    def restore():
+        for node, interface in (("r1", "eth2"), ("r2", "eth1")):
+            docker_exec(node, "tc", "qdisc", "del", "dev", interface, "root", check=False)
+            docker_exec(node, "ip", "link", "set", "dev", interface, "up", check=False)
+        set_ospf_cost("r1", "eth2", 10)
+        set_ospf_cost("r2", "eth1", 10)
+
+    transition = measure_route_transition("eth2", restore)
+    result = status("Primary route restored; congestion shaping and failure cleared.")
+    result.update(transition)
+    return result
 
 
 def induce_congestion():
@@ -260,32 +338,53 @@ def induce_congestion():
     _, measured_delay = ping("r1", "10.0.12.2", "eth2")
     if measured_delay is None:
         raise LabError("Could not measure delay on the primary link.")
-    if measured_delay >= 50:
-        set_ospf_cost("r1", "eth2", 100)
-        set_ospf_cost("r2", "eth1", 100)
-    else:
+    if measured_delay < 50:
         raise LabError(
             f"Injected congestion was not measured above the 50 ms threshold "
             f"(measured {measured_delay:.2f} ms)."
         )
-    wait_for_route("eth3", timeout=60)
-    return status(
+
+    def raise_cost():
+        set_ospf_cost("r1", "eth2", 100)
+        set_ospf_cost("r2", "eth1", 100)
+
+    transition = measure_route_transition("eth3", raise_cost)
+    result = status(
         f"Controller measured {measured_delay:.1f} ms primary-link delay "
         "and raised its OSPF cost; traffic moved to the alternate route."
     )
+    result.update(transition)
+    return result
 
 
 def induce_failure():
-    docker_exec("r1", "ip", "link", "set", "dev", "eth2", "down")
-    docker_exec("r2", "ip", "link", "set", "dev", "eth1", "down")
-    wait_for_route("eth3", timeout=60)
-    return status("Primary link failed; OSPF withdrew the route and traffic uses the alternate.")
+    def fail_primary():
+        docker_exec("r1", "ip", "link", "set", "dev", "eth2", "down")
+        docker_exec("r2", "ip", "link", "set", "dev", "eth1", "down")
+
+    transition = measure_route_transition("eth3", fail_primary)
+    result = status("Primary link failed; OSPF withdrew the route and traffic uses the alternate.")
+    result.update(transition)
+    return result
+
+
+def record_action(action, result, duration_ms):
+    EVIDENCE_LOG.parent.mkdir(parents=True, exist_ok=True)
+    record = {
+        "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+        "action": action,
+        "duration_ms": round(duration_ms, 1),
+        **result,
+    }
+    with EVIDENCE_LOG.open("a", encoding="utf-8") as output:
+        output.write(json.dumps(record) + "\n")
 
 
 def main():
     if len(sys.argv) != 2:
         raise LabError("Usage: demo.py status|deploy|congestion|failure|reset|destroy")
     action = sys.argv[1]
+    action_started_at = time.monotonic()
     if action == "status":
         result = status()
     elif action == "deploy":
@@ -298,13 +397,16 @@ def main():
         result = reset()
     elif action == "destroy":
         run(
-            ["containerlab", "destroy", "-t", str(TOPOLOGY)],
+            ["containerlab", "destroy", "--cleanup", "-t", str(TOPOLOGY)],
             timeout=120,
             cwd=ROOT,
         )
         result = status("Containerlab stopped.")
     else:
         raise LabError(f"Unsupported action: {action}")
+    if action != "status":
+        record_action(action, result, (time.monotonic() - action_started_at) * 1000)
+        result["evidence_log"] = str(EVIDENCE_LOG)
     print(json.dumps(result))
 
 

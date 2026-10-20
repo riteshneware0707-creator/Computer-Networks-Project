@@ -79,6 +79,11 @@ export interface LiveLabStatus {
   primary_tx_packets: number | null;
   alternate_tx_packets: number | null;
   forwarding_verified: boolean;
+  route_convergence_ms: number | null;
+  transition_packet_loss_pct: number | null;
+  transition_packets_transmitted: number | null;
+  transition_packets_received: number | null;
+  evidence_log?: string;
   event: string | null;
 }
 

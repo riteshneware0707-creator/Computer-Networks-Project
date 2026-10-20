@@ -113,7 +113,7 @@ export function LiveNetworkPanel() {
 
       {running && status && (
         <>
-          <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
             <div className="rounded-lg border border-slate-800 bg-slate-950/70 p-3">
               <p className="text-xs text-slate-400">Observed OSPF path</p>
               <p className="mt-1 font-semibold text-sky-200">{status.selected_route ?? 'Unknown'}</p>
@@ -130,6 +130,14 @@ export function LiveNetworkPanel() {
               <p className="text-xs text-slate-400">iperf3 throughput</p>
               <p className="mt-1 font-mono text-slate-100">{metric(status.throughput_mbps, ' Mbps')}</p>
             </div>
+            <div className="rounded-lg border border-slate-800 bg-slate-950/70 p-3">
+              <p className="text-xs text-slate-400">Route convergence</p>
+              <p className="mt-1 font-mono text-slate-100">{metric(status.route_convergence_ms, ' ms')}</p>
+            </div>
+            <div className="rounded-lg border border-slate-800 bg-slate-950/70 p-3">
+              <p className="text-xs text-slate-400">Transition probe loss</p>
+              <p className="mt-1 font-mono text-slate-100">{metric(status.transition_packet_loss_pct, '%')}</p>
+            </div>
           </div>
           <p className={`mt-3 text-xs font-semibold ${status.forwarding_verified ? 'text-emerald-300' : 'text-amber-200'}`}>
             {status.forwarding_verified
@@ -137,6 +145,12 @@ export function LiveNetworkPanel() {
               : `Forwarding is not yet verified. Current state: ${status.network_state}.`}
             {' '}R1 tx packet deltas during probes — primary: {status.primary_tx_packets ?? '—'}, alternate: {status.alternate_tx_packets ?? '—'}.
           </p>
+          {status.transition_packets_transmitted !== null && status.transition_packets_transmitted !== undefined && (
+            <p className="mt-1 text-xs text-slate-400">
+              Transition probes: {status.transition_packets_received ?? 0}/{status.transition_packets_transmitted} received.
+              {status.evidence_log && ` Evidence saved in WSL: ${status.evidence_log}`}
+            </p>
+          )}
         </>
       )}
     </section>

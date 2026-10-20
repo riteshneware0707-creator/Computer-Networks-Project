@@ -130,6 +130,22 @@ the primary and click **Stop lab** when finished. Deploy once before presentatio
 day to pull images and rehearse the complete sequence. Check
 <http://127.0.0.1:8000/api/health> from Windows before the demo.
 
+Each route-changing action starts continuous PC-to-server ping probes while the
+backend times how long until R1's kernel route uses the expected interface. The
+panel shows route-convergence time and packet loss observed during that transition,
+along with probe packet counts. Baseline loss, latency, and throughput are measured
+on deploy. Every non-status action appends its timestamp and measurements to
+`/opt/self-healing-network/emulation/results/live-demo-evidence.jsonl` in Ubuntu
+WSL, so rehearsal results can be retained and compared. Treat these as measured
+single-run results; repeat runs before making performance claims.
+The router-to-router Ethernet links are explicitly configured as OSPF
+point-to-point networks, avoiding an unnecessary broadcast DR/BDR election wait
+on links that connect only two routers. Each deploy also asks Containerlab to
+clean its generated lab directory, preventing stale router configuration from
+surviving a redeploy. OSPF uses 1-second Hello and 4-second Dead timers on these
+isolated lab links to speed up adjacency recovery; these demonstration settings
+are not a general recommendation for production networks.
+
 The routers are Linux containers with FRR, not physical routers. This is live
 network emulation, not a physical hardware deployment. Keep the live-control API
 on a trusted local/private network; do not expose it publicly.
